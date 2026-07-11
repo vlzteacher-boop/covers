@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Управление расписанием — Covers</title>
+    <link rel="icon" href="logo_ris_2.png" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Стили аналогичны index.html, можно вынести в общий CSS, но для простоты оставим тут */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #f1f5f9; font-family: 'Inter', system-ui, sans-serif; padding: 28px 20px; color: #0f172a; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1.5rem; border-bottom: 3px solid #0f172a; padding-bottom: 0.3rem; }
+        .nav-links { margin-bottom: 2rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+        .nav-links a { font-weight: 600; color: #3b82f6; text-decoration: none; border-bottom: 2px solid transparent; transition: 0.2s; padding: 4px 0; }
+        .nav-links a:hover { border-bottom-color: #3b82f6; }
+        .card { background: #ffffff; border-radius: 28px; padding: 1.2rem 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; margin-bottom: 2rem; }
+        label { font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 16px 0 6px 0; font-size: 0.85rem; color: #334155; }
+        select, button, .checkbox-group label, input {
+            padding: 10px 16px; border-radius: 60px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a;
+            font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease; cursor: pointer; outline: none;
+        }
+        button { background: #3b82f6; border: none; color: white; font-weight: 600; box-shadow: 0 2px 5px rgba(59,130,246,0.3); }
+        button:hover { background: #2563eb; transform: translateY(-1px); }
+        button.secondary { background: #f1f5f9; color: #1e293b; box-shadow: none; border: 1px solid #cbd5e1; }
+        button.secondary:hover { background: #e2e8f0; }
+        .checkbox-group {
+            display: flex; flex-wrap: wrap; gap: 10px; background: #f8fafc; padding: 12px 14px; border-radius: 40px;
+            margin-top: 6px; border: 1px solid #e2e8f0; max-height: 180px; overflow-y: auto;
+        }
+        .checkbox-group label {
+            display: inline-flex; align-items: center; gap: 8px; background: #ffffff; padding: 5px 14px;
+            border-radius: 40px; font-weight: 500; font-size: 0.8rem; cursor: pointer; border: 1px solid #cbd5e1; margin: 0;
+        }
+        .checkbox-group label:has(input:checked) { background: #3b82f6; border-color: #3b82f6; color: white; }
+        input[type="checkbox"] { accent-color: #3b82f6; width: 14px; height: 14px; margin: 0; }
+        .collapsible {
+            background: #ffffff; border: 1px solid #e2e8f0; color: #0f172a; font-size: 1rem; text-align: left;
+            border-radius: 60px; padding: 12px 20px; font-weight: 600; margin-bottom: 12px; cursor: pointer;
+            width: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
+        .collapsible i { margin-right: 12px; color: #1e293b; font-size: 1.1rem; width: 1.4rem; text-align: center; }
+        .collapsible-content { display: none; padding-top: 16px; }
+        .schedule-table {
+            background: #ffffff; border-radius: 28px; padding: 1rem; margin-top: 28px;
+            border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.03); margin-bottom: 2rem;
+        }
+        .schedule-table .table-wrapper { overflow-x: auto; margin-top: 16px; }
+        .schedule-table table { width: 100%; border-collapse: collapse; font-size: 0.7rem; min-width: 1000px; }
+        .schedule-table th, .schedule-table td { border: 1px solid #e2e8f0; padding: 6px 3px; text-align: center; }
+        .schedule-table th { background: #f1f5f9; font-weight: 600; }
+        .busy { background: #fee2e2 !important; color: #991b1b; }
+        .free { background: #dcfce7 !important; color: #166534; }
+        .lesson-cell { cursor: pointer; }
+        .flex-buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+        footer { text-align: center; margin-top: 32px; font-size: 0.75rem; color: #64748b; }
+    
+
+    </style>
+</head>
+<body>
+<div class="container">
+    
+    <h1>Управление расписанием / Schedule Management</h1>
+
+    <div class="nav-links">
+    <a href="/index.html"><i class="fas fa-arrow-left"></i> На главную (замены)</a>
+    <a href="#" onclick="logout(); return false;" style="cursor:pointer;"><i class="fas fa-sign-out-alt"></i> Выйти / Logout</a>
+</div>
+
+    <!-- 1. ДОБАВИТЬ УРОКИ -->
+    <div class="vertical-block">
+        <button type="button" id="toggleAddLessonBtn" class="collapsible"><i class="fas fa-book-open"></i> Добавить уроки / Add lessons</button>
+        <div id="addLessonForm" class="collapsible-content">
+            <div class="card">
+                <label><i class="fas fa-chalkboard-user"></i> Учитель / Teacher</label>
+                <select id="teacherSelect"></select>
+                <label><i class="fas fa-calendar-day"></i> День / Day</label>
+                <select id="daySelectAdd">
+                    <option value="Monday">Понедельник / Monday</option>
+                    <option value="Tuesday">Вторник / Tuesday</option>
+                    <option value="Wednesday">Среда / Wednesday</option>
+                    <option value="Thursday">Четверг / Thursday</option>
+                    <option value="Friday">Пятница / Friday</option>
+                </select>
+                <label><i class="fas fa-clock"></i> Уроки / Periods</label>
+                <div id="lessonCheckboxes" class="checkbox-group"></div>
+                <label><i class="fas fa-book-open"></i> Предмет / Subject</label>
+                <select id="subjectSelect"></select>
+                <label><i class="fas fa-users"></i> Классы / Classes</label>
+                <div id="classCheckboxes" class="checkbox-group"></div>
+                <label><i class="fas fa-door-open"></i> Кабинет / Room</label>
+                <select id="roomSelect"></select>
+                <button id="addLessonBtn"><i class="fas fa-plus-circle"></i> Добавить уроки / Add lessons</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. РАСПИСАНИЕ -->
+    <div class="schedule-table">
+        <button type="button" id="toggleScheduleBtn" class="collapsible"><i class="fas fa-calendar-alt"></i> Расписание / Schedule</button>
+        <div id="scheduleContent" class="collapsible-content">
+            <div class="table-wrapper">
+                <table id="scheduleGrid">
+                    <thead id="gridHead"></thead>
+                    <tbody id="gridBody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="flex-buttons">
+            <button id="exportBtn" class="secondary"><i class="fas fa-download"></i> Экспорт JSON</button>
+            <button id="importBtn" class="secondary"><i class="fas fa-upload"></i> Импорт JSON</button>
+            <button id="resetBtn" class="secondary"><i class="fas fa-trash-alt"></i> Сбросить всё</button>
+        </div>
+    </div>
+
+    <footer>✅ Удалите урок кликом по красной ячейке. / Click on red cell to delete lesson.</footer>
+</div>
+
+<script src="common.js"></script>
+<script src="schedule.js"></script>
+</body>
+</html>
