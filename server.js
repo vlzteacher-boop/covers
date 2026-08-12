@@ -2,16 +2,22 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
-const pool = require('./db'); // для остальных запросов
+const pool = require('./db');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+
+// Включаем доверие к прокси (onreza, скорее всего, использует nginx)
+app.set('trust proxy', 1);
+
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
 app.use(express.json());
 
 // ============================================================
-// Сессии — хранятся в памяти (MemoryStore)
-// Это надёжное решение для текущего этапа.
+// Сессии — MemoryStore с правильными настройками cookie
 // ============================================================
 app.use(session({
     secret: process.env.SESSION_SECRET || 'my-secret-key-123',
@@ -20,20 +26,23 @@ app.use(session({
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
         httpOnly: true,
-        secure: false,          // для HTTP (пока без HTTPS)
-        sameSite: 'lax'
+        // Определяем secure автоматически: если запрос пришёл по HTTPS, то true
+        secure: process.env.NODE_ENV === 'production' ? true : false,
+        sameSite: 'lax',
+        path: '/'
     }
 }));
 
-// Логирование сессии (для отладки, можно удалить позже)
+// Логирование сессии для отладки (убедитесь, что после входа session.user установлен)
 app.use((req, res, next) => {
     console.log('🔍 Session ID:', req.sessionID);
     console.log('🔍 Session user:', req.session.user);
+    console.log('🔍 Cookie header:', req.headers.cookie);
     next();
 });
 
 // ============================================================
-// Подключаем маршруты
+// Маршруты (без изменений)
 // ============================================================
 const authRoutes = require('./routes/auth');
 const teachersRoutes = require('./routes/teachers');
@@ -48,11 +57,9 @@ const exportImportRoutes = require('./routes/exportImport');
 const reportRoutes = require('./routes/report');
 const statsRoutes = require('./routes/stats');
 
-// Публичные маршруты
 app.use('/api', authRoutes);
 app.use('/api/report', reportRoutes);
 
-// Middleware для проверки авторизации
 const requireAuth = (req, res, next) => {
     if (req.session.user && req.session.user.authenticated) {
         next();
@@ -61,7 +68,6 @@ const requireAuth = (req, res, next) => {
     }
 };
 
-// Защищённые маршруты
 app.use('/api/teachers', requireAuth, teachersRoutes);
 app.use('/api/classes', requireAuth, classesRoutes);
 app.use('/api/rooms', requireAuth, roomsRoutes);
@@ -73,7 +79,6 @@ app.use('/api/classroomSwaps', requireAuth, classroomSwapsRoutes);
 app.use('/api', requireAuth, exportImportRoutes);
 app.use('/api/stats', requireAuth, statsRoutes);
 
-// Статика – защита HTML-страниц (кроме login.html)
 app.use((req, res, next) => {
     const isHtml = req.path.endsWith('.html') || req.path === '/';
     const isLoginPage = req.path === '/login.html' || req.path === '/';
@@ -87,9 +92,6 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ============================================================
-// Запуск сервера
-// ============================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Сервер запущен на порту ${PORT}`);
