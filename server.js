@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const app = express();
 
-// Включаем доверие к прокси (onreza, скорее всего, использует nginx)
+// Доверие к прокси (для onreza)
 app.set('trust proxy', 1);
 
 app.use(cors({
@@ -17,32 +17,31 @@ app.use(cors({
 app.use(express.json());
 
 // ============================================================
-// Сессии — MemoryStore с правильными настройками cookie
+// Сессии — MemoryStore с явным сохранением
 // ============================================================
 app.use(session({
     secret: process.env.SESSION_SECRET || 'my-secret-key-123',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,   // временно для теста
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
         httpOnly: true,
-        // Определяем secure автоматически: если запрос пришёл по HTTPS, то true
-        secure: process.env.NODE_ENV === 'production' ? true : false,
+        secure: false,          // пока без HTTPS (для теста)
         sameSite: 'lax',
         path: '/'
     }
 }));
 
-// Логирование сессии для отладки (убедитесь, что после входа session.user установлен)
+// Логирование состояния сессии
 app.use((req, res, next) => {
     console.log('🔍 Session ID:', req.sessionID);
     console.log('🔍 Session user:', req.session.user);
-    console.log('🔍 Cookie header:', req.headers.cookie);
+    console.log('🔍 Cookie header:', req.headers.cookie || 'нет');
     next();
 });
 
 // ============================================================
-// Маршруты (без изменений)
+// Маршруты
 // ============================================================
 const authRoutes = require('./routes/auth');
 const teachersRoutes = require('./routes/teachers');

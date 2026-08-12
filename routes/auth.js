@@ -10,9 +10,17 @@ router.post('/login', (req, res) => {
     }
     if (password === adminPassword) {
         req.session.user = { authenticated: true };
-        return res.json({ success: true });
+        // Принудительно сохраняем сессию перед ответом
+        req.session.save((err) => {
+            if (err) {
+                console.error('❌ Ошибка сохранения сессии:', err);
+                return res.status(500).json({ error: 'Ошибка сохранения сессии' });
+            }
+            console.log('✅ Сессия сохранена для ID:', req.sessionID);
+            res.json({ success: true });
+        });
     } else {
-        return res.status(401).json({ error: 'Неверный пароль' });
+        res.status(401).json({ error: 'Неверный пароль' });
     }
 });
 
