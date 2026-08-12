@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
-//const pgSession = require('connect-pg-simple')(session);
+const pgSession = require('connect-pg-simple')(session);
 const pool = require('./db'); // импортируем пул из db.js
 require('dotenv').config();
 
@@ -11,12 +11,12 @@ app.use(cors());
 app.use(express.json());
 
 // Настройка сессий с хранением в PostgreSQL
-`app.use(session({
+app.use(session({
     store: new pgSession({
         pool: pool,                // используем существующий пул
         tableName: 'session'       // таблица будет создана автоматически
     }),
-    secret: process.env.SESSION_SECRET || 'default_secret_change_me',
+    secret: process.env.SESSION_SECRET || 'supersecretword',
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -24,27 +24,7 @@ app.use(express.json());
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production' // для HTTPS
     }
-}));`
-
-
-app.use(session({
-    store: new session.MemoryStore(),
-    secret: process.env.SESSION_SECRET || 'default_secret_change_me',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
-        httpOnly: true,
-        secure: false   // временно отключаем secure для теста
-    }
-}));h
-
-
-
-
-
-
-
+}));
 
 // Подключаем маршруты
 const authRoutes = require('./routes/auth');
