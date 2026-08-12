@@ -25,7 +25,11 @@ app.use(session({
         secure: process.env.NODE_ENV === 'production' // для HTTPS
     }
 }));
-
+app.use((req, res, next) => {
+    console.log('🔍 Session ID:', req.sessionID);
+    console.log('🔍 Session:', req.session);
+    next();
+});
 // Подключаем маршруты
 const authRoutes = require('./routes/auth');
 const teachersRoutes = require('./routes/teachers');
@@ -62,7 +66,8 @@ app.use('/api/lessons', requireAuth, lessonsRoutes);
 app.use('/api/absences', requireAuth, absencesRoutes);
 app.use('/api/replacements', requireAuth, replacementsRoutes);
 app.use('/api/classroomSwaps', requireAuth, classroomSwapsRoutes);
-app.use('/api', requireAuth, exportImportRoutes);   // /api/export, /api/import, /api/reset
+app.use('/api', requireAut///////////////////////////
+*h, exportImportRoutes);   // /api/export, /api/import, /api/reset
 
 app.use('/api/stats', requireAuth, statsRoutes);
 
@@ -85,4 +90,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Сервер запущен на порту ${PORT}`);
     console.log(`🌐 Откройте http://localhost:${PORT}/login.html`);
-});
+});++++++++-*-**************
