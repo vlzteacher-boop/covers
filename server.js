@@ -2,8 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
-const pool = require('./db');
+const pool = require('./db'); // для остальных запросов
 require('dotenv').config();
 
 const app = express();
@@ -11,25 +10,22 @@ app.use(cors());
 app.use(express.json());
 
 // ============================================================
-// Сессии — постоянное хранение в PostgreSQL
+// Сессии — хранятся в памяти (MemoryStore)
+// Это надёжное решение для текущего этапа.
 // ============================================================
 app.use(session({
-    store: new pgSession({
-        pool: pool,                // используется тот же пул с SSL
-        tableName: 'session'
-    }),
     secret: process.env.SESSION_SECRET || 'my-secret-key-123',
     resave: false,
     saveUninitialized: false,
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // включите true, если HTTPS
+        secure: false,          // для HTTP (пока без HTTPS)
         sameSite: 'lax'
     }
 }));
 
-// Логирование сессии для отладки (можно убрать позже)
+// Логирование сессии (для отладки, можно удалить позже)
 app.use((req, res, next) => {
     console.log('🔍 Session ID:', req.sessionID);
     console.log('🔍 Session user:', req.session.user);
@@ -37,7 +33,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================================
-// Маршруты
+// Подключаем маршруты
 // ============================================================
 const authRoutes = require('./routes/auth');
 const teachersRoutes = require('./routes/teachers');
@@ -77,7 +73,7 @@ app.use('/api/classroomSwaps', requireAuth, classroomSwapsRoutes);
 app.use('/api', requireAuth, exportImportRoutes);
 app.use('/api/stats', requireAuth, statsRoutes);
 
-// Статика и защита HTML-страниц
+// Статика – защита HTML-страниц (кроме login.html)
 app.use((req, res, next) => {
     const isHtml = req.path.endsWith('.html') || req.path === '/';
     const isLoginPage = req.path === '/login.html' || req.path === '/';
