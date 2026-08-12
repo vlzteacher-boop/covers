@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
-// const pgSession = require('connect-pg-simple')(session); // Временно отключаем
-const pool = require('./db'); // всё равно нужен для других запросов
+const pgSession = require('connect-pg-simple')(session);
+const pool = require('./db');
 require('dotenv').config();
 
 const app = express();
@@ -11,21 +11,25 @@ app.use(cors());
 app.use(express.json());
 
 // ============================================================
-// Настройка сессий — используем MemoryStore (временно)
+// Сессии — постоянное хранение в PostgreSQL
 // ============================================================
 app.use(session({
+    store: new pgSession({
+        pool: pool,                // используется тот же пул с SSL
+        tableName: 'session'
+    }),
     secret: process.env.SESSION_SECRET || 'my-secret-key-123',
     resave: false,
     saveUninitialized: false,
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
         httpOnly: true,
-        secure: false,          // для теста (если сайт по HTTP)
+        secure: process.env.NODE_ENV === 'production', // включите true, если HTTPS
         sameSite: 'lax'
     }
 }));
 
-// Логирование сессии для отладки
+// Логирование сессии для отладки (можно убрать позже)
 app.use((req, res, next) => {
     console.log('🔍 Session ID:', req.sessionID);
     console.log('🔍 Session user:', req.session.user);
@@ -33,7 +37,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================================
-// Подключаем маршруты
+// Маршруты
 // ============================================================
 const authRoutes = require('./routes/auth');
 const teachersRoutes = require('./routes/teachers');
@@ -48,11 +52,11 @@ const exportImportRoutes = require('./routes/exportImport');
 const reportRoutes = require('./routes/report');
 const statsRoutes = require('./routes/stats');
 
-// Публичные маршруты (не требуют авторизации)
+// Публичные маршруты
 app.use('/api', authRoutes);
 app.use('/api/report', reportRoutes);
 
-// Middleware для проверки авторизации API
+// Middleware для проверки авторизации
 const requireAuth = (req, res, next) => {
     if (req.session.user && req.session.user.authenticated) {
         next();
@@ -70,10 +74,10 @@ app.use('/api/lessons', requireAuth, lessonsRoutes);
 app.use('/api/absences', requireAuth, absencesRoutes);
 app.use('/api/replacements', requireAuth, replacementsRoutes);
 app.use('/api/classroomSwaps', requireAuth, classroomSwapsRoutes);
-app.use('/api', requireAuth, exportImportRoutes);   // /api/export, /api/import, /api/reset
+app.use('/api', requireAuth, exportImportRoutes);
 app.use('/api/stats', requireAuth, statsRoutes);
 
-// Отдача статики – проверка авторизации для HTML-страниц
+// Статика и защита HTML-страниц
 app.use((req, res, next) => {
     const isHtml = req.path.endsWith('.html') || req.path === '/';
     const isLoginPage = req.path === '/login.html' || req.path === '/';
