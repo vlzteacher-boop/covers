@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-// POST /api/login
 router.post('/login', (req, res) => {
     const { password } = req.body;
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
@@ -10,13 +9,12 @@ router.post('/login', (req, res) => {
     }
     if (password === adminPassword) {
         req.session.user = { authenticated: true };
-        // Принудительно сохраняем сессию перед ответом
         req.session.save((err) => {
             if (err) {
                 console.error('❌ Ошибка сохранения сессии:', err);
                 return res.status(500).json({ error: 'Ошибка сохранения сессии' });
             }
-            console.log('✅ Сессия сохранена для ID:', req.sessionID);
+            console.log('✅ Сессия сохранена (ID):', req.sessionID);
             res.json({ success: true });
         });
     } else {
@@ -24,7 +22,6 @@ router.post('/login', (req, res) => {
     }
 });
 
-// POST /api/logout
 router.post('/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) {
@@ -34,7 +31,6 @@ router.post('/logout', (req, res) => {
     });
 });
 
-// GET /api/me – проверка авторизации
 router.get('/me', (req, res) => {
     if (req.session.user && req.session.user.authenticated) {
         res.json({ authenticated: true });

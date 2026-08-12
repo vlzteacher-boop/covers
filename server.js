@@ -2,12 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const pool = require('./db');
 require('dotenv').config();
 
 const app = express();
-
-// Доверие к прокси (для onreza)
 app.set('trust proxy', 1);
 
 app.use(cors({
@@ -17,22 +16,27 @@ app.use(cors({
 app.use(express.json());
 
 // ============================================================
-// Сессии — MemoryStore с явным сохранением
+// Сессии — хранение в PostgreSQL (pgSession)
 // ============================================================
 app.use(session({
+    store: new pgSession({
+        pool: pool,
+        tableName: 'session',
+        errorLog: (err) => console.error('❌ pgSession error:', err)
+    }),
     secret: process.env.SESSION_SECRET || 'my-secret-key-123',
     resave: false,
-    saveUninitialized: true,   // временно для теста
+    saveUninitialized: false,
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
         httpOnly: true,
-        secure: false,          // пока без HTTPS (для теста)
+        secure: false,          // для теста (при HTTPS – true)
         sameSite: 'lax',
         path: '/'
     }
 }));
 
-// Логирование состояния сессии
+// Логирование сессии
 app.use((req, res, next) => {
     console.log('🔍 Session ID:', req.sessionID);
     console.log('🔍 Session user:', req.session.user);
