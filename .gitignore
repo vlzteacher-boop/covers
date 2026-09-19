@@ -12,3 +12,9 @@ npm-debug.log
 .vscode/
 *.swp
 *.swo
+# Local school schedule files
+Russian International School*.json
+
+# Local backup / temporary scripts
+covers_backup.json
+importSchedule_old.js

@@ -169,7 +169,7 @@ function escapeHtml(str) {
 
 // Выход из системы
 async function logout() {
-    if (!confirm('Вы уверены, что хотите выйти?')) return;
+    if (!confirm(t('common.logoutConfirm'))) return;
     try {
         const res = await fetch('/api/logout', {
             method: 'POST',
@@ -178,9 +178,9 @@ async function logout() {
         if (res.ok) {
             window.location.href = '/login.html';
         } else {
-            alert('Ошибка при выходе');
+            alert(t('common.logoutError'));
         }
     } catch (e) {
-        alert('Ошибка сети');
+        alert(t('common.networkError'));
     }
 }

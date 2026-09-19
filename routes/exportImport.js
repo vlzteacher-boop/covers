@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const ExcelJS = require('exceljs');
 
 // GET /api/export – выгрузить все данные в JSON
 router.get('/export', async (req, res) => {
@@ -28,6 +29,234 @@ router.get('/export', async (req, res) => {
         };
         res.json(data);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/export-schedule-xlsx – Excel для сверки расписания по учителям
+router.get('/export-schedule-xlsx', async (req, res) => {
+    try {
+        const lang = req.query.lang === 'en' ? 'en' : 'ru';
+        const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const dayLabels = lang === 'en'
+            ? { Monday: 'Monday', Tuesday: 'Tuesday', Wednesday: 'Wednesday', Thursday: 'Thursday', Friday: 'Friday' }
+            : { Monday: 'Понедельник', Tuesday: 'Вторник', Wednesday: 'Среда', Thursday: 'Четверг', Friday: 'Пятница' };
+
+        const result = await pool.query(`
+            SELECT
+                l.teacher_id,
+                t.name AS teacher_name,
+                l.day,
+                l.period,
+                s.name AS subject_name,
+                c.name AS class_name,
+                r.name AS room_name
+            FROM lessons l
+            JOIN teachers t ON t.id = l.teacher_id
+            JOIN subjects s ON s.id = l.subject_id
+            JOIN classes c ON c.id = l.class_id
+            LEFT JOIN rooms r ON r.id = l.room_id
+            WHERE l.day IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+              AND l.period BETWEEN 1 AND 9
+            ORDER BY
+                LOWER(t.name),
+                CASE l.day
+                    WHEN 'Monday' THEN 1
+                    WHEN 'Tuesday' THEN 2
+                    WHEN 'Wednesday' THEN 3
+                    WHEN 'Thursday' THEN 4
+                    WHEN 'Friday' THEN 5
+                    ELSE 99
+                END,
+                l.period,
+                LOWER(s.name),
+                LOWER(COALESCE(r.name, '')),
+                LOWER(c.name)
+        `);
+
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Covers · Russian International School';
+        workbook.created = new Date();
+        workbook.modified = new Date();
+
+        const naturalCompare = (a, b) => String(a).localeCompare(String(b), undefined, {
+            numeric: true,
+            sensitivity: 'base'
+        });
+
+        const rowsByTeacher = new Map();
+        for (const row of result.rows) {
+            if (!rowsByTeacher.has(row.teacher_id)) {
+                rowsByTeacher.set(row.teacher_id, {
+                    id: row.teacher_id,
+                    name: row.teacher_name,
+                    slots: new Map()
+                });
+            }
+            const teacher = rowsByTeacher.get(row.teacher_id);
+            const slotKey = `${row.day}|${row.period}`;
+            if (!teacher.slots.has(slotKey)) teacher.slots.set(slotKey, new Map());
+
+            const roomName = row.room_name || (lang === 'en' ? 'NO ROOM / TBD' : 'БЕЗ КАБИНЕТА');
+            const groupKey = `${row.subject_name}\u0000${roomName}`;
+            const slot = teacher.slots.get(slotKey);
+            if (!slot.has(groupKey)) {
+                slot.set(groupKey, {
+                    subject: row.subject_name,
+                    room: roomName,
+                    classes: new Set()
+                });
+            }
+            slot.get(groupKey).classes.add(row.class_name);
+        }
+
+        const teachers = [...rowsByTeacher.values()].sort((a, b) => naturalCompare(a.name, b.name));
+
+        const usedSheetNames = new Set();
+        function makeSheetName(name) {
+            const cleaned = String(name || 'Teacher')
+                .replace(/[\\/*?:\[\]]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim() || 'Teacher';
+            const base = cleaned.slice(0, 31);
+            let candidate = base;
+            let n = 2;
+            while (usedSheetNames.has(candidate.toLowerCase())) {
+                const suffix = ` ${n++}`;
+                candidate = base.slice(0, 31 - suffix.length) + suffix;
+            }
+            usedSheetNames.add(candidate.toLowerCase());
+            return candidate;
+        }
+
+        const indexSheet = workbook.addWorksheet(lang === 'en' ? 'Teachers' : 'Учителя', {
+            views: [{ state: 'frozen', ySplit: 2 }]
+        });
+        indexSheet.getCell('A1').value = lang === 'en' ? 'Schedule verification by teacher' : 'Сверка расписания по учителям';
+        indexSheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF17365D' } };
+        indexSheet.getCell('A2').value = lang === 'en'
+            ? 'Each teacher has a separate sheet: periods 1–9 × Monday–Friday.'
+            : 'Для каждого учителя создан отдельный лист: уроки 1–9 × понедельник–пятница.';
+        indexSheet.getCell('A2').font = { italic: true, color: { argb: 'FF64748B' } };
+        indexSheet.getColumn(1).width = 42;
+        indexSheet.getColumn(2).width = 18;
+
+        const teacherSheetInfo = [];
+
+        for (const teacher of teachers) {
+            const sheetName = makeSheetName(teacher.name);
+            const sheet = workbook.addWorksheet(sheetName, {
+                views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }],
+                pageSetup: {
+                    orientation: 'landscape',
+                    fitToPage: true,
+                    fitToWidth: 1,
+                    fitToHeight: 0,
+                    margins: { left: 0.25, right: 0.25, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 }
+                }
+            });
+
+            teacherSheetInfo.push({ teacher, sheetName });
+
+            sheet.mergeCells('A1:F1');
+            const title = sheet.getCell('A1');
+            title.value = teacher.name;
+            title.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
+            title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17365D' } };
+            title.alignment = { vertical: 'middle', horizontal: 'left' };
+            sheet.getRow(1).height = 25;
+
+            const headers = [lang === 'en' ? 'Period' : 'Урок', ...dayOrder.map(d => dayLabels[d])];
+            headers.forEach((value, index) => {
+                const cell = sheet.getCell(2, index + 1);
+                cell.value = value;
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                cell.border = {
+                    top: { style: 'thin', color: { argb: 'FFD0D7DE' } },
+                    left: { style: 'thin', color: { argb: 'FFD0D7DE' } },
+                    bottom: { style: 'thin', color: { argb: 'FFD0D7DE' } },
+                    right: { style: 'thin', color: { argb: 'FFD0D7DE' } }
+                };
+            });
+            sheet.getRow(2).height = 22;
+
+            sheet.getColumn(1).width = 9;
+            for (let col = 2; col <= 6; col++) sheet.getColumn(col).width = 31;
+
+            for (let period = 1; period <= 9; period++) {
+                const rowNumber = period + 2;
+                const periodCell = sheet.getCell(rowNumber, 1);
+                periodCell.value = period;
+                periodCell.font = { bold: true, color: { argb: 'FF334155' } };
+                periodCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                periodCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+                let maxLines = 1;
+                for (let dayIndex = 0; dayIndex < dayOrder.length; dayIndex++) {
+                    const day = dayOrder[dayIndex];
+                    const cell = sheet.getCell(rowNumber, dayIndex + 2);
+                    const groups = teacher.slots.get(`${day}|${period}`);
+
+                    if (groups && groups.size) {
+                        const blocks = [...groups.values()]
+                            .sort((a, b) => naturalCompare(a.subject, b.subject) || naturalCompare(a.room, b.room))
+                            .map(group => {
+                                const classLines = [...group.classes].sort(naturalCompare);
+                                return [...classLines, group.room, group.subject].join('\n');
+                            });
+                        cell.value = blocks.join('\n\n');
+                        const lines = String(cell.value).split('\n').length;
+                        maxLines = Math.max(maxLines, lines);
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7DF' } };
+                    } else {
+                        cell.value = '';
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                    }
+
+                    cell.alignment = { vertical: 'top', horizontal: 'center', wrapText: true };
+                }
+
+                for (let col = 1; col <= 6; col++) {
+                    sheet.getCell(rowNumber, col).border = {
+                        top: { style: 'thin', color: { argb: 'FFD8DEE9' } },
+                        left: { style: 'thin', color: { argb: 'FFD8DEE9' } },
+                        bottom: { style: 'thin', color: { argb: 'FFD8DEE9' } },
+                        right: { style: 'thin', color: { argb: 'FFD8DEE9' } }
+                    };
+                }
+                sheet.getRow(rowNumber).height = Math.min(180, Math.max(42, 14 * maxLines + 12));
+            }
+
+            sheet.autoFilter = { from: 'A2', to: 'F11' };
+            sheet.properties.defaultRowHeight = 18;
+        }
+
+        indexSheet.getCell('A4').value = lang === 'en' ? 'Teacher' : 'Учитель';
+        indexSheet.getCell('B4').value = lang === 'en' ? 'Sheet' : 'Лист';
+        for (const cell of indexSheet.getRow(4).values.slice(1).map((_, i) => indexSheet.getCell(4, i + 1))) {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
+        }
+
+        teacherSheetInfo.forEach(({ teacher, sheetName }, index) => {
+            const row = 5 + index;
+            indexSheet.getCell(row, 1).value = teacher.name;
+            indexSheet.getCell(row, 2).value = {
+                text: lang === 'en' ? 'Open' : 'Открыть',
+                hyperlink: `#'${sheetName.replace(/'/g, "''")}'!A1`
+            };
+            indexSheet.getCell(row, 2).font = { color: { argb: 'FF0563C1' }, underline: true };
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="schedule_verification.xlsx"');
+        res.setHeader('Content-Length', buffer.length);
+        res.end(Buffer.from(buffer));
+    } catch (err) {
+        console.error('Excel schedule export error:', err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -20,13 +20,14 @@ router.get('/', async (req, res) => {
 
         for (const abs of absRes.rows) {
             const replRes = await pool.query(
-                'SELECT period, replacement_teacher_id, comment FROM replacements WHERE absence_id = $1',
+                'SELECT id, period, replacement_teacher_id, comment FROM replacements WHERE absence_id = $1',
                 [abs.id]
             );
             const periods = {};
             for (const r of replRes.rows) {
                 if (!periods[r.period]) periods[r.period] = [];
                 periods[r.period].push({
+                    id: r.id,
                     teacherId: r.replacement_teacher_id,
                     comment: r.comment
                 });
@@ -113,6 +114,33 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: err.message });
     } finally {
         client.release();
+    }
+});
+
+
+// DELETE /api/replacements/:id
+// Удаляет одну конкретную сохранённую замену сразу из БД.
+router.delete('/:id', async (req, res) => {
+    const replacementId = Number(req.params.id);
+
+    if (!Number.isInteger(replacementId) || replacementId <= 0) {
+        return res.status(400).json({ error: 'Invalid replacement id' });
+    }
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM replacements WHERE id = $1 RETURNING id',
+            [replacementId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Replacement not found' });
+        }
+
+        res.json({ success: true, id: replacementId });
+    } catch (err) {
+        console.error('DELETE /api/replacements/:id error:', err);
+        res.status(500).json({ error: err.message });
     }
 });
 

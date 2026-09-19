@@ -4,7 +4,7 @@ async function loadStats() {
     const month = document.getElementById('statsMonth').value;
     const year = document.getElementById('statsYear').value;
     if (!month || !year) {
-        alert('Выберите месяц и год');
+        alert(t('stats.selectMonthYear'));
         return;
     }
 
@@ -14,14 +14,14 @@ async function loadStats() {
         const res = await fetch(`/api/stats?month=${month}&year=${year}`);
         if (!res.ok) {
             const errorText = await res.text();
-            throw new Error(`Ошибка загрузки данных (${res.status}): ${errorText}`);
+            throw new Error(`${t('common.error')} (${res.status}): ${errorText}`);
         }
         const data = await res.json();
         console.log('📈 Данные статистики:', data);
         renderStatsTable(data);
     } catch (err) {
         console.error('❌ Ошибка в loadStats:', err);
-        alert('Ошибка: ' + err.message);
+        alert(t('stats.loadError', { message: err.message }));
     }
 }
 
@@ -30,7 +30,7 @@ function renderStatsTable(data) {
     if (!container) return;
 
     if (!data || data.length === 0) {
-        container.innerHTML = `<p style="color:#64748b; text-align:center;">Нет замен за выбранный месяц</p>`;
+        container.innerHTML = `<p style="color:#64748b; text-align:center;">${escapeHtml(t('stats.noData'))}</p>`;
         return;
     }
 
@@ -48,13 +48,13 @@ function renderStatsTable(data) {
     let html = `<table class="report-table">
         <thead>
             <tr>
-                <th>Учитель (заменяющий)</th>
-                <th>Дата</th>
-                <th>Урок</th>
-                <th>Предмет</th>
-                <th>Класс(ы)</th>
-                <th>Кого заменяли</th>
-                <th>Комментарий</th>
+                <th>${escapeHtml(t('stats.replacementTeacher'))}</th>
+                <th>${escapeHtml(t('common.date'))}</th>
+                <th>${escapeHtml(t('common.period'))}</th>
+                <th>${escapeHtml(t('common.subject'))}</th>
+                <th>${escapeHtml(t('common.classes'))}</th>
+                <th>${escapeHtml(t('stats.absentTeacher'))}</th>
+                <th>${escapeHtml(t('common.comment'))}</th>
             </tr>
         </thead>
         <tbody>`;
@@ -90,7 +90,7 @@ function renderStatsTable(data) {
         // Строка итога по этому учителю
         html += `<tr class="subtotal-row">
             <td colspan="7" style="text-align: right; padding: 6px 10px;">
-                <span>Итого по ${escapeHtml(teacher)}: ${teacherTotal} замен</span>
+                <span>${escapeHtml(t('stats.totalTeacher', { teacher, count: teacherTotal }))}</span>
             </td>
         </tr>`;
     });
@@ -98,7 +98,7 @@ function renderStatsTable(data) {
     // Общий итог
     html += `<tr class="total-row">
         <td colspan="7" style="text-align: right; padding: 8px 10px;">
-            <span>Всего замен за месяц: ${grandTotal}</span>
+            <span>${escapeHtml(t('stats.totalMonth', { count: grandTotal }))}</span>
         </td>
     </tr>`;
 
@@ -111,13 +111,13 @@ function exportStatsCSV() {
     if (!container) return;
     const table = container.querySelector('table');
     if (!table) {
-        alert('Сначала загрузите статистику');
+        alert(t('stats.loadFirst'));
         return;
     }
 
     // Собираем данные из таблицы (включая итоговые строки)
     const rows = table.querySelectorAll('tbody tr');
-    let csv = 'Учитель,Дата,Урок,Предмет,Класс(ы),Кого заменяли,Комментарий\n';
+    let csv = `${t('stats.replacementTeacher')},${t('common.date')},${t('common.period')},${t('common.subject')},${t('common.classes')},${t('stats.absentTeacher')},${t('common.comment')}\n`;
 
     let isSubtotal = false;
     let teacherName = '';
@@ -150,7 +150,7 @@ function exportStatsCSV() {
     const totalRow = table.querySelector('.total-row');
     if (totalRow) {
         const totalText = totalRow.textContent.trim();
-        csv += `\n"Итого",,,,,"${totalText}"\n`;
+        csv += `\n"${t('stats.total')}",,,,,"${totalText}"\n`;
     }
 
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
