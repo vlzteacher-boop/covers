@@ -406,6 +406,8 @@ router.get('/:date', async (req, res) => {
             const absent = absences.find(a => a.teacher_id === lesson.teacher_id);
             if (!absent) continue;
             const replList = (replByAbsence[absent.id] && replByAbsence[absent.id][lesson.period]) || [];
+            // Не показываем урок в отчёте, если на этот период фактически не назначена замена.
+            if (!replList.length) continue;
             const assignedTeacherIds = replList.map(r => r.teacherId).filter(id => id !== null && id !== undefined);
             const commentsArray = replList.map(r => r.comment).filter(c => c && c.trim() !== '');
             rawItems.push({
@@ -992,6 +994,8 @@ router.get('/report-curator/:date', async (req, res) => {
             const absent = absences.find(a => a.teacher_id === lesson.teacher_id);
             if (!absent) continue;
             const replList = (replByAbsence[absent.id] && replByAbsence[absent.id][lesson.period]) || [];
+            // Не показываем урок в отчёте, если на этот период фактически не назначена замена.
+            if (!replList.length) continue;
             const assignedTeacherIds = replList.map(r => r.teacherId).filter(id => id !== null && id !== undefined);
             const commentsArray = replList.map(r => r.comment).filter(c => c && c.trim() !== '');
             rawItems.push({
