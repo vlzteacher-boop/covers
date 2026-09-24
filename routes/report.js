@@ -6,6 +6,22 @@ function getReportLanguage(req) {
     return req.query.lang === 'en' ? 'en' : 'ru';
 }
 
+// Постоянная ссылка /today должна открывать отчёт за текущую дату школы,
+// независимо от UTC-часового пояса сервера. При необходимости часовой пояс
+// можно переопределить через REPORT_TIME_ZONE в .env.
+function getTodayReportDate() {
+    const timeZone = process.env.REPORT_TIME_ZONE || 'Europe/Moscow';
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
 function getReportLabels(lang) {
     const ru = {
         invalidDate: 'Неверная дата',
@@ -324,7 +340,7 @@ function buildTeacherReportRows(rawItems, classes, teacherMap, lang = 'ru') {
 
 // ===== ОСНОВНОЙ ОТЧЁТ (без кураторов) =====
 router.get('/:date', async (req, res) => {
-    const { date } = req.params;
+    const date = req.params.date === 'today' ? getTodayReportDate() : req.params.date;
     const lang = getReportLanguage(req);
     const L = getReportLabels(lang);
 
@@ -890,6 +906,7 @@ router.get('/:date', async (req, res) => {
 </body>
 </html>`;
 
+        res.set('Cache-Control', 'no-store');
         res.send(html);
     } catch (err) {
         console.error(err);
@@ -899,7 +916,7 @@ router.get('/:date', async (req, res) => {
 
 // ===== ОТДЕЛЬНЫЙ ОТЧЁТ ДЛЯ КУРАТОРОВ (с группировкой по параллелям и объединением классов в строке) =====
 router.get('/report-curator/:date', async (req, res) => {
-    const { date } = req.params;
+    const date = req.params.date === 'today' ? getTodayReportDate() : req.params.date;
     const lang = getReportLanguage(req);
     const L = getReportLabels(lang);
 
@@ -1332,6 +1349,7 @@ router.get('/report-curator/:date', async (req, res) => {
 </body>
 </html>`;
 
+        res.set('Cache-Control', 'no-store');
         res.send(html);
     } catch (err) {
         console.error(err);
