@@ -309,17 +309,37 @@ function buildTeacherReportRows(rawItems, classes, teacherMap, lang = 'ru') {
         };
     }).sort((a, b) => a.period - b.period);
 
-    // Сохраняем компактные диапазоны 5–6 только если это действительно
-    // один и тот же состав классов и одна и та же замена на соседних уроках.
-    const merged = [];
+    // Объединяем соседние уроки внутри одной и той же фактической замены.
+    // Важно: одинаковые строки могут быть разделены в periodRows другими заменами
+    // того же периода, поэтому нельзя сравнивать только с предыдущей строкой.
+    const rowsByMergeKey = new Map();
     for (const row of periodRows) {
-        const prev = merged[merged.length - 1];
-        if (prev && prev.mergeKey === row.mergeKey && row.period === prev.endPeriod + 1) {
-            prev.endPeriod = row.period;
-        } else {
-            merged.push({ ...row, startPeriod: row.period, endPeriod: row.period });
+        if (!rowsByMergeKey.has(row.mergeKey)) rowsByMergeKey.set(row.mergeKey, []);
+        rowsByMergeKey.get(row.mergeKey).push(row);
+    }
+
+    const merged = [];
+    for (const rows of rowsByMergeKey.values()) {
+        rows.sort((a, b) => a.period - b.period);
+
+        let current = null;
+        for (const row of rows) {
+            if (current && row.period === current.endPeriod + 1) {
+                current.endPeriod = row.period;
+            } else {
+                current = { ...row, startPeriod: row.period, endPeriod: row.period };
+                merged.push(current);
+            }
         }
     }
+
+    // После объединения снова сортируем весь отчёт по времени.
+    merged.sort((a, b) =>
+        a.startPeriod - b.startPeriod ||
+        a.endPeriod - b.endPeriod ||
+        String(a.absentName || '').localeCompare(String(b.absentName || ''), 'ru') ||
+        String(a.className || '').localeCompare(String(b.className || ''), 'ru')
+    );
 
     return merged.map(row => ({
         lessonDisplay: row.startPeriod === row.endPeriod
@@ -653,6 +673,12 @@ router.get('/:date', async (req, res) => {
             border-top: 1px solid #cbd5e1;
             padding-top: 12px;
         }
+        .report-topbar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin-bottom: 12px;
+        }
         .absent-list {
             background: #f8fafc;
             padding: 12px 20px;
@@ -741,6 +767,12 @@ router.get('/:date', async (req, res) => {
 </head>
 <body>
 <div class="container">
+    <div class="report-topbar">
+        <div class="lang-switch" aria-label="Language">
+            <button type="button" class="${lang === 'ru' ? 'active' : ''}" aria-pressed="${lang === 'ru'}" onclick="setReportLanguage('ru')">RU</button>
+            <button type="button" class="${lang === 'en' ? 'active' : ''}" aria-pressed="${lang === 'en'}" onclick="setReportLanguage('en')">EN</button>
+        </div>
+    </div>
     <h1>Covers ${formatDate(date, lang)}</h1>
 
     <div class="absent-list">
@@ -758,14 +790,6 @@ router.get('/:date', async (req, res) => {
         </div>
         <div class="control-group">
             <label><input type="checkbox" id="onlyMine"> ${L.onlyMine}</label>
-        </div>
-        <div class="control-group" style="margin-left: auto;">
-            <div class="lang-switch" aria-label="Language">
-                <button type="button" class="${lang === 'ru' ? 'active' : ''}" aria-pressed="${lang === 'ru'}" onclick="setReportLanguage('ru')">RU</button>
-                <button type="button" class="${lang === 'en' ? 'active' : ''}" aria-pressed="${lang === 'en'}" onclick="setReportLanguage('en')">EN</button>
-            </div>
-            <button onclick="copyLink()" class="primary"><i class="fas fa-copy"></i> ${L.copyLink}</button>
-            <button onclick="window.print()" class="secondary"><i class="fas fa-print"></i> ${L.print}</button>
         </div>
     </div>
 
@@ -879,20 +903,6 @@ router.get('/:date', async (req, res) => {
         window.location.href = url.toString();
     }
 
-    function copyLink() {
-        const url = window.location.href;
-        navigator.clipboard.writeText(url).then(() => {
-            alert(${JSON.stringify(L.linkCopied)});
-        }).catch(() => {
-            const input = document.createElement('input');
-            input.value = url;
-            document.body.appendChild(input);
-            input.select();
-            document.execCommand('copy');
-            document.body.removeChild(input);
-            alert(${JSON.stringify(L.linkCopied)});
-        });
-    }
 
     (function() {
         const urlParams = new URLSearchParams(window.location.search);
