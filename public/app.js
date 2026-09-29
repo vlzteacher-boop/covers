@@ -135,7 +135,12 @@ async function renderAssignmentsTable(loadFromServer = true) {
                     html += `<div class="replacement-item" data-day="${day}" data-absent="${a}" data-period="${p}" data-idx="${idx}">
                                 <select class="candidate-select">${teacherOptions}</select>
                                 <button class="icon-button remove" data-action="remove"><i class="fas fa-trash-alt"></i></button>
-                                <input type="text" class="comment-input" placeholder="${escapeHtml(t('common.comment'))}" value="${escapeHtml(r.comment || '')}">
+                                <button type="button"
+                                        class="comment-edit-button${r.comment ? ' has-comment' : ''}"
+                                        title="${escapeHtml(t('common.comment'))}">
+                                    <i class="fas fa-comment-alt"></i>
+                                    <span>${escapeHtml(r.comment ? (r.comment.length > 26 ? r.comment.slice(0, 26) + '…' : r.comment) : t('common.comment'))}</span>
+                                </button>
                              </div>`;
                 }
                 html += `<div class="add-button-wrapper"><button class="icon-button add" data-action="add"><i class="fas fa-plus-circle"></i></button></div></div>`;
@@ -148,6 +153,235 @@ async function renderAssignmentsTable(loadFromServer = true) {
     document.getElementById('assignmentsTableDiv').innerHTML = html;
     document.getElementById('assignmentsContainer').style.display = 'block';
 }
+
+// -------------------- Большое окно комментария к замене --------------------
+function getReplacementCommentLabels() {
+    const isEnglish = typeof getLanguage === 'function' && getLanguage() === 'en';
+    return isEnglish
+        ? { title: 'Replacement comment', save: 'Save', cancel: 'Cancel', placeholder: 'Enter a comment…' }
+        : { title: 'Комментарий к замене', save: 'Сохранить', cancel: 'Отмена', placeholder: 'Введите комментарий…' };
+}
+
+function ensureReplacementCommentModal() {
+    let modal = document.getElementById('replacementCommentModal');
+    if (modal) return modal;
+
+    const style = document.createElement('style');
+    style.id = 'replacementCommentModalStyles';
+    style.textContent = `
+        .comment-edit-button {
+            width: 100%;
+            min-width: 118px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 7px 9px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #475569;
+            cursor: pointer;
+            font: inherit;
+            font-size: 0.78rem;
+            text-align: left;
+        }
+        .comment-edit-button:hover {
+            background: #eef2f7;
+            border-color: #94a3b8;
+        }
+        .comment-edit-button.has-comment {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+        .comment-edit-button span {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .replacement-comment-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.48);
+        }
+        .replacement-comment-modal.is-open {
+            display: flex;
+        }
+        .replacement-comment-dialog {
+            width: min(620px, 100%);
+            background: #ffffff;
+            border-radius: 14px;
+            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+            padding: 20px;
+        }
+        .replacement-comment-dialog h3 {
+            margin: 0 0 12px;
+            font-size: 1.05rem;
+            color: #0f172a;
+        }
+        .replacement-comment-context {
+            margin-bottom: 10px;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+        .replacement-comment-textarea {
+            width: 100%;
+            min-height: 190px;
+            resize: vertical;
+            padding: 12px 14px;
+            border: 1px solid #94a3b8;
+            border-radius: 10px;
+            font: inherit;
+            font-size: 1rem;
+            line-height: 1.45;
+            color: #0f172a;
+            background: #ffffff;
+            outline: none;
+        }
+        .replacement-comment-textarea:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+        .replacement-comment-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .replacement-comment-actions button {
+            min-width: 96px;
+            padding: 9px 14px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .replacement-comment-cancel {
+            background: #ffffff;
+            color: #334155;
+        }
+        .replacement-comment-save {
+            background: #2563eb;
+            border-color: #2563eb !important;
+            color: #ffffff;
+        }
+        @media (max-width: 640px) {
+            .replacement-comment-dialog {
+                padding: 16px;
+            }
+            .replacement-comment-textarea {
+                min-height: 220px;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+
+    modal = document.createElement('div');
+    modal.id = 'replacementCommentModal';
+    modal.className = 'replacement-comment-modal';
+    modal.innerHTML = `
+        <div class="replacement-comment-dialog" role="dialog" aria-modal="true" aria-labelledby="replacementCommentTitle">
+            <h3 id="replacementCommentTitle"></h3>
+            <div class="replacement-comment-context" id="replacementCommentContext"></div>
+            <textarea class="replacement-comment-textarea" id="replacementCommentTextarea"></textarea>
+            <div class="replacement-comment-actions">
+                <button type="button" class="replacement-comment-cancel" id="replacementCommentCancel"></button>
+                <button type="button" class="replacement-comment-save" id="replacementCommentSave"></button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+        modal.classList.remove('is-open');
+    };
+
+    const saveModal = async () => {
+        const absent = parseInt(modal.dataset.absent);
+        const period = parseInt(modal.dataset.period);
+        const idx = parseInt(modal.dataset.idx);
+        const textarea = document.getElementById('replacementCommentTextarea');
+
+        if (
+            window._replacements?.[absent]?.[period]?.[idx]
+        ) {
+            window._replacements[absent][period][idx].comment = textarea.value.trim();
+        }
+
+        closeModal();
+        await renderAssignmentsTable(false);
+    };
+
+    document.getElementById('replacementCommentCancel').addEventListener('click', closeModal);
+    document.getElementById('replacementCommentSave').addEventListener('click', saveModal);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+
+    document.getElementById('replacementCommentTextarea').addEventListener('keydown', async (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeModal();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            await saveModal();
+        }
+    });
+
+    return modal;
+}
+
+function openReplacementCommentModal(parentDiv) {
+    if (!parentDiv) return;
+
+    const absent = parseInt(parentDiv.dataset.absent);
+    const period = parseInt(parentDiv.dataset.period);
+    const idx = parseInt(parentDiv.dataset.idx);
+    const current = window._replacements?.[absent]?.[period]?.[idx];
+    if (!current) return;
+
+    const modal = ensureReplacementCommentModal();
+    const labels = getReplacementCommentLabels();
+    const textarea = document.getElementById('replacementCommentTextarea');
+    const context = document.getElementById('replacementCommentContext');
+
+    modal.dataset.absent = String(absent);
+    modal.dataset.period = String(period);
+    modal.dataset.idx = String(idx);
+
+    document.getElementById('replacementCommentTitle').textContent = labels.title;
+    document.getElementById('replacementCommentSave').textContent = labels.save;
+    document.getElementById('replacementCommentCancel').textContent = labels.cancel;
+    textarea.placeholder = labels.placeholder;
+    textarea.value = current.comment || '';
+
+    const teacherName = current.teacherId ? getTeacherName(current.teacherId) : '';
+    context.textContent = teacherName
+        ? `${t('common.period')} ${period} · ${teacherName}`
+        : `${t('common.period')} ${period}`;
+
+    modal.classList.add('is-open');
+    requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+}
+
+document.addEventListener('click', function(e) {
+    const button = e.target.closest('.comment-edit-button');
+    if (!button) return;
+    e.preventDefault();
+    openReplacementCommentModal(button.closest('.replacement-item'));
+});
 
 document.addEventListener('change', async function(e) {
     const target = e.target;
@@ -167,9 +401,6 @@ document.addEventListener('change', async function(e) {
     if (target.classList.contains('candidate-select')) {
         const val = target.value;
         window._replacements[absent][period][idx].teacherId = val ? parseInt(val) : null;
-        await renderAssignmentsTable(false);
-    } else if (target.classList.contains('comment-input')) {
-        window._replacements[absent][period][idx].comment = target.value.trim();
         await renderAssignmentsTable(false);
     }
 });
